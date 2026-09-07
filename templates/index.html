@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>稼働時間トラッカー</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f5f5f5; color: #333; }
+        .container { max-width: 700px; margin: 0 auto; padding: 24px 16px; }
+        h1 { font-size: 1.3rem; color: #444; margin-bottom: 20px; }
+        h2 { font-size: 0.85rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+        .card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+
+        /* 現在の作業 */
+        .timer-idle { color: #aaa; font-size: 0.95rem; padding: 8px 0; }
+        .timer-active { text-align: center; padding: 8px 0; }
+        .timer-project { font-size: 1.1rem; font-weight: 600; color: #2563eb; margin-bottom: 6px; }
+        .timer-clock { font-size: 3rem; font-weight: 700; font-variant-numeric: tabular-nums; color: #1e40af; letter-spacing: 3px; }
+        .btn-stop { margin-top: 14px; background: #ef4444; color: white; border: none; padding: 8px 28px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+        .btn-stop:hover { background: #dc2626; }
+
+        /* 案件リスト */
+        .project-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+        .project-row:last-child { border-bottom: none; }
+        .project-label { font-size: 0.95rem; }
+        .project-label.active { font-weight: 600; color: #2563eb; }
+        .btn-start { background: #22c55e; color: white; border: none; padding: 6px 18px; border-radius: 5px; cursor: pointer; font-size: 0.85rem; white-space: nowrap; }
+        .btn-start:hover { background: #16a34a; }
+        .btn-start:disabled { background: #93c5fd; cursor: default; }
+        .btn-archive { background: none; border: none; color: #ccc; font-size: 0.8rem; cursor: pointer; padding: 4px 6px; margin-left: 4px; }
+        .btn-archive:hover { color: #f59e0b; }
+        .btn-pencil { background: none; border: none; color: #ccc; font-size: 0.8rem; cursor: pointer; padding: 4px 6px; }
+        .btn-pencil:hover { color: #2563eb; }
+        .inline-edit { display: flex; align-items: center; gap: 6px; flex: 1; }
+        .inline-edit input { flex: 1; border: 1px solid #2563eb; border-radius: 5px; padding: 4px 8px; font-size: 0.9rem; outline: none; box-shadow: 0 0 0 2px #dbeafe; }
+        .btn-inline-save { background: #2563eb; color: white; border: none; border-radius: 4px; padding: 4px 12px; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
+        .btn-inline-cancel { background: none; border: 1px solid #ddd; border-radius: 4px; padding: 4px 10px; font-size: 0.82rem; cursor: pointer; color: #888; white-space: nowrap; }
+        .project-row-actions { display: flex; align-items: center; gap: 4px; }
+        .archived-toggle { font-size: 0.82rem; color: #aaa; cursor: pointer; margin-top: 12px; padding-top: 12px; border-top: 1px solid #f0f0f0; user-select: none; }
+        .archived-toggle:hover { color: #666; }
+        .archived-section { margin-top: 8px; }
+        .archived-row .project-label { color: #bbb; text-decoration: line-through; }
+        .btn-restore { background: none; border: 1px solid #ddd; border-radius: 5px; padding: 4px 12px; font-size: 0.8rem; color: #888; cursor: pointer; white-space: nowrap; }
+        .btn-restore:hover { border-color: #22c55e; color: #22c55e; }
+        .no-items { color: #aaa; font-size: 0.9rem; padding: 8px 0; }
+
+        /* 案件追加 */
+        .add-form { display: flex; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; }
+        .add-form input { flex: 1; border: 1px solid #ddd; border-radius: 6px; padding: 8px 12px; font-size: 0.9rem; outline: none; }
+        .add-form input:focus { border-color: #2563eb; box-shadow: 0 0 0 2px #dbeafe; }
+        .btn-add { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; white-space: nowrap; }
+        .btn-add:hover { background: #1d4ed8; }
+        .error-msg { color: #ef4444; font-size: 0.82rem; margin-top: 6px; }
+
+        /* タブ */
+        .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+        .tab { padding: 5px 14px; border-radius: 5px; cursor: pointer; font-size: 0.85rem; color: #666; user-select: none; }
+        .tab.active { background: #2563eb; color: white; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* サマリー */
+        .summary-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid #f5f5f5; font-size: 0.92rem; }
+        .summary-row:last-child { border-bottom: none; }
+        .summary-duration { color: #555; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+        /* 日付別 */
+        .date-group { margin-bottom: 16px; }
+        .date-header { font-size: 0.82rem; font-weight: 600; color: #888; padding: 6px 0 4px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+        .date-header .date-total { color: #555; }
+        .date-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 8px; font-size: 0.9rem; border-bottom: 1px solid #f8f8f8; }
+        .date-row:last-child { border-bottom: none; }
+        .date-row-duration { color: #555; font-variant-numeric: tabular-nums; font-weight: 500; }
+
+        /* 詳細記録 */
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th { text-align: left; padding: 8px 6px; color: #999; font-weight: 500; border-bottom: 1px solid #eee; }
+        td { padding: 8px 6px; border-bottom: 1px solid #f8f8f8; color: #555; }
+        td:first-child { color: #333; font-weight: 500; }
+        .btn-edit { background: none; border: 1px solid #ddd; border-radius: 4px; padding: 3px 10px; font-size: 0.78rem; color: #888; cursor: pointer; }
+        .btn-edit:hover { border-color: #2563eb; color: #2563eb; }
+        .btn-del { background: none; border: 1px solid #ddd; border-radius: 4px; padding: 3px 8px; font-size: 0.78rem; color: #ccc; cursor: pointer; margin-left: 4px; }
+        .btn-del:hover { border-color: #ef4444; color: #ef4444; }
+
+        /* モーダル */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 100; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: white; border-radius: 10px; padding: 24px; width: 340px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .modal h3 { font-size: 0.95rem; margin-bottom: 16px; color: #333; }
+        .modal label { display: block; font-size: 0.82rem; color: #888; margin-bottom: 4px; }
+        .modal input[type="datetime-local"] { width: 100%; border: 1px solid #ddd; border-radius: 6px; padding: 8px 10px; font-size: 0.9rem; margin-bottom: 14px; outline: none; }
+        .modal input[type="datetime-local"]:focus { border-color: #2563eb; }
+        .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+        .btn-cancel { background: none; border: 1px solid #ddd; border-radius: 6px; padding: 7px 16px; font-size: 0.88rem; cursor: pointer; color: #666; }
+        .btn-save { background: #2563eb; color: white; border: none; border-radius: 6px; padding: 7px 16px; font-size: 0.88rem; cursor: pointer; }
+        .btn-save:hover { background: #1d4ed8; }
+        .modal-error { color: #ef4444; font-size: 0.82rem; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>稼働時間トラッカー</h1>
+
+    <div class="card">
+        <h2>現在の作業</h2>
+        <div id="timer-display"><div class="timer-idle">作業中の案件はありません</div></div>
+    </div>
+
+    <div class="card">
+        <h2>案件</h2>
+        <div id="project-list"><div class="no-items">読み込み中...</div></div>
+        <div class="add-form">
+            <input type="text" id="new-project-name" placeholder="新しい案件名を入力" maxlength="100" />
+            <button class="btn-add" onclick="addProject()">追加</button>
+        </div>
+        <div id="add-error" class="error-msg"></div>
+    </div>
+
+    <div class="card">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('daily')">日付別</div>
+            <div class="tab" onclick="switchTab('monthly')">月別</div>
+            <div class="tab" onclick="switchTab('summary')">案件別合計</div>
+            <div class="tab" onclick="switchTab('records')">詳細</div>
+        </div>
+        <div id="tab-monthly" class="tab-content">
+            <div id="monthly-list"><div class="no-items">記録がありません</div></div>
+        </div>
+        <div id="tab-daily" class="tab-content active">
+            <div id="daily-list"><div class="no-items">記録がありません</div></div>
+        </div>
+        <div id="tab-summary" class="tab-content">
+            <div id="summary-list"><div class="no-items">記録がありません</div></div>
+        </div>
+        <div id="tab-records" class="tab-content">
+            <table>
+                <thead><tr><th>案件</th><th>日付</th><th>時間</th><th></th></tr></thead>
+                <tbody id="records-tbody"><tr><td colspan="4" style="color:#aaa;text-align:center;">記録がありません</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 編集モーダル -->
+    <div class="modal-overlay" id="edit-modal">
+        <div class="modal">
+            <h3>稼働時間を編集</h3>
+            <label>開始</label>
+            <input type="datetime-local" id="edit-start" />
+            <label>終了</label>
+            <input type="datetime-local" id="edit-end" />
+            <div id="edit-error" class="modal-error"></div>
+            <div class="modal-btns">
+                <button class="btn-cancel" onclick="closeModal()">キャンセル</button>
+                <button class="btn-save" onclick="saveRecord()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentTimer = null;
+
+    function fmt(sec) {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+
+    function elapsed() {
+        if (!currentTimer) return 0;
+        return Math.floor((Date.now() - new Date(currentTimer.start_time + 'Z').getTime()) / 1000);
+    }
+
+    function renderTimer() {
+        const el = document.getElementById('timer-display');
+        if (!currentTimer) {
+            el.innerHTML = '<div class="timer-idle">作業中の案件はありません</div>';
+            return;
+        }
+        el.innerHTML = `
+            <div class="timer-active">
+                <div class="timer-project">${currentTimer.project_name}</div>
+                <div class="timer-clock" id="clock">${fmt(elapsed())}</div>
+                <button class="btn-stop" onclick="stopTimer()">停止</button>
+            </div>`;
+    }
+
+    setInterval(() => {
+        const el = document.getElementById('clock');
+        if (el) el.textContent = fmt(elapsed());
+    }, 1000);
+
+    async function loadCurrent() {
+        const res = await fetch('/api/current');
+        currentTimer = await res.json();
+        renderTimer();
+    }
+
+    let showArchived = false;
+    let editingProjectId = null;
+
+    async function loadProjects() {
+        const res = await fetch('/api/projects');
+        const projects = await res.json();
+        const el = document.getElementById('project-list');
+
+        const active = projects.filter(p => !p.archived);
+        const archived = projects.filter(p => p.archived);
+
+        let html = '';
+        if (!active.length) {
+            html += '<div class="no-items">案件がありません</div>';
+        } else {
+            html += active.map(p => {
+                const running = currentTimer && currentTimer.project_id === p.id;
+                if (editingProjectId === p.id) {
+                    return `<div class="project-row">
+                        <div class="inline-edit">
+                            <input id="edit-pname-${p.id}" value="${p.name.replace(/"/g, '&quot;')}"
+                                onkeydown="handlePnameKey(event, ${p.id})" />
+                            <button class="btn-inline-save" onclick="saveProjectName(${p.id})">保存</button>
+                            <button class="btn-inline-cancel" onclick="cancelEditProject()">キャンセル</button>
+                        </div>
+                    </div>`;
+                }
+                return `<div class="project-row">
+                    <span class="project-label ${running ? 'active' : ''}">${p.name}</span>
+                    <div class="project-row-actions">
+                        <button class="btn-start" onclick="startTimer(${p.id})" ${running ? 'disabled' : ''}>
+                            ${running ? '作業中' : '開始'}
+                        </button>
+                        <button class="btn-pencil" onclick="editProject(${p.id})" title="名前を変更">✏️</button>
+                        <button class="btn-archive" onclick="toggleArchive(${p.id})" title="アーカイブ">🗂</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        if (archived.length) {
+            html += `<div class="archived-toggle" onclick="toggleArchivedSection()">
+                ${showArchived ? '▾' : '▸'} アーカイブ済み（${archived.length}件）
+            </div>`;
+            if (showArchived) {
+                html += '<div class="archived-section">' + archived.map(p =>
+                    `<div class="project-row archived-row">
+                        <span class="project-label">${p.name}</span>
+                        <button class="btn-restore" onclick="toggleArchive(${p.id})">復元</button>
+                    </div>`
+                ).join('') + '</div>';
+            }
+        }
+
+        el.innerHTML = html;
+    }
+
+    function editProject(id) {
+        editingProjectId = id;
+        loadProjects().then(() => {
+            const input = document.getElementById(`edit-pname-${id}`);
+            if (input) { input.focus(); input.select(); }
+        });
+    }
+
+    function cancelEditProject() {
+        editingProjectId = null;
+        loadProjects();
+    }
+
+    function handlePnameKey(e, id) {
+        if (e.key === 'Enter') saveProjectName(id);
+        if (e.key === 'Escape') cancelEditProject();
+    }
+
+    async function saveProjectName(id) {
+        const input = document.getElementById(`edit-pname-${id}`);
+        const name = input.value.trim();
+        if (!name) return;
+        const res = await fetch(`/api/projects/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        if (res.ok) {
+            editingProjectId = null;
+            await loadProjects();
+            await loadDaily();
+            await loadMonthly();
+            await loadSummary();
+            await loadRecords();
+        } else {
+            const data = await res.json();
+            input.style.borderColor = '#ef4444';
+            input.title = data.error || 'エラー';
+        }
+    }
+
+    function toggleArchivedSection() {
+        showArchived = !showArchived;
+        loadProjects();
+    }
+
+    async function toggleArchive(projectId) {
+        await fetch(`/api/projects/${projectId}/archive`, { method: 'POST' });
+        await loadProjects();
+    }
+
+    async function loadMonthly() {
+        const res = await fetch('/api/monthly');
+        const data = await res.json();
+        const el = document.getElementById('monthly-list');
+        if (!data.length) {
+            el.innerHTML = '<div class="no-items">記録がありません</div>';
+            return;
+        }
+        // 案件でグループ化
+        const byProject = {};
+        data.forEach(r => {
+            if (!byProject[r.project_name]) byProject[r.project_name] = [];
+            byProject[r.project_name].push(r);
+        });
+        el.innerHTML = Object.entries(byProject).map(([project, rows]) => {
+            const items = rows.map(r =>
+                `<div class="date-row">
+                    <span>${r.month}</span>
+                    <span class="date-row-duration">${fmt(r.total_seconds)}</span>
+                </div>`
+            ).join('');
+            return `<div class="date-group">
+                <div class="date-header"><span>${project}</span></div>
+                ${items}
+            </div>`;
+        }).join('');
+    }
+
+    async function loadDaily() {
+        const res = await fetch('/api/daily');
+        const data = await res.json();
+        const el = document.getElementById('daily-list');
+        if (!data.length) {
+            el.innerHTML = '<div class="no-items">記録がありません</div>';
+            return;
+        }
+        // 日付でグループ化
+        const byDate = {};
+        data.forEach(r => {
+            if (!byDate[r.date]) byDate[r.date] = [];
+            byDate[r.date].push(r);
+        });
+        el.innerHTML = Object.entries(byDate).map(([date, rows]) => {
+            const dayTotal = rows.reduce((s, r) => s + r.total_seconds, 0);
+            const items = rows.map(r =>
+                `<div class="date-row">
+                    <span>${r.project_name}</span>
+                    <span class="date-row-duration">${fmt(r.total_seconds)}</span>
+                </div>`
+            ).join('');
+            return `<div class="date-group">
+                <div class="date-header">
+                    <span>${date}</span>
+                    <span class="date-total">合計 ${fmt(dayTotal)}</span>
+                </div>
+                ${items}
+            </div>`;
+        }).join('');
+    }
+
+    async function loadSummary() {
+        const res = await fetch('/api/summary');
+        const data = await res.json();
+        const el = document.getElementById('summary-list');
+        if (!data.length) {
+            el.innerHTML = '<div class="no-items">記録がありません</div>';
+            return;
+        }
+        el.innerHTML = data.map(r =>
+            `<div class="summary-row"><span>${r.project_name}</span><span class="summary-duration">${fmt(r.total_seconds)}</span></div>`
+        ).join('');
+    }
+
+    let editingId = null;
+
+    function toLocalInput(isoUtc) {
+        const d = new Date(isoUtc + 'Z');
+        const offset = d.getTimezoneOffset() * 60000;
+        return new Date(d - offset).toISOString().slice(0, 16);
+    }
+
+    function fromLocalInput(localStr) {
+        return new Date(localStr).toISOString().replace(/\.\d{3}Z$/, '');
+    }
+
+    function openModal(record) {
+        editingId = record.id;
+        document.getElementById('edit-start').value = toLocalInput(record.start_time);
+        document.getElementById('edit-end').value = toLocalInput(record.end_time);
+        document.getElementById('edit-error').textContent = '';
+        document.getElementById('edit-modal').classList.add('open');
+    }
+
+    function closeModal() {
+        editingId = null;
+        document.getElementById('edit-modal').classList.remove('open');
+    }
+
+    async function saveRecord() {
+        const start_time = fromLocalInput(document.getElementById('edit-start').value);
+        const end_time = fromLocalInput(document.getElementById('edit-end').value);
+        const errEl = document.getElementById('edit-error');
+        const res = await fetch(`/api/records/${editingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start_time, end_time })
+        });
+        if (res.ok) {
+            closeModal();
+            await refresh();
+        } else {
+            const data = await res.json();
+            errEl.textContent = data.error || 'エラーが発生しました';
+        }
+    }
+
+    async function deleteRecord(id) {
+        if (!confirm('この稼働記録を削除しますか？')) return;
+        await fetch(`/api/records/${id}`, { method: 'DELETE' });
+        await refresh();
+    }
+
+    document.getElementById('edit-modal').addEventListener('click', e => {
+        if (e.target === document.getElementById('edit-modal')) closeModal();
+    });
+
+    async function loadRecords() {
+        const res = await fetch('/api/records');
+        const data = await res.json();
+        const el = document.getElementById('records-tbody');
+        if (!data.length) {
+            el.innerHTML = '<tr><td colspan="4" style="color:#aaa;text-align:center;padding:12px;">記録がありません</td></tr>';
+            return;
+        }
+        el.innerHTML = data.map(r =>
+            `<tr>
+                <td>${r.project_name}</td>
+                <td>${r.date}</td>
+                <td>${fmt(r.duration_seconds)}</td>
+                <td style="white-space:nowrap">
+                    <button class="btn-edit" onclick='openModal(${JSON.stringify(r)})'>編集</button>
+                    <button class="btn-del" onclick="deleteRecord(${r.id})">削除</button>
+                </td>
+            </tr>`
+        ).join('');
+    }
+
+    async function refresh() {
+        await loadCurrent();
+        await loadProjects();
+        await loadDaily();
+        await loadMonthly();
+        await loadSummary();
+        await loadRecords();
+    }
+
+    async function startTimer(projectId) {
+        await fetch(`/api/start/${projectId}`, { method: 'POST' });
+        await refresh();
+    }
+
+    async function stopTimer() {
+        await fetch('/api/stop', { method: 'POST' });
+        currentTimer = null;
+        renderTimer();
+        await loadProjects();
+        await loadDaily();
+        await loadMonthly();
+        await loadSummary();
+        await loadRecords();
+    }
+
+    async function addProject() {
+        const input = document.getElementById('new-project-name');
+        const errEl = document.getElementById('add-error');
+        const name = input.value.trim();
+        errEl.textContent = '';
+        if (!name) return;
+        const res = await fetch('/api/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        if (res.ok) {
+            input.value = '';
+            await loadProjects();
+        } else {
+            const data = await res.json();
+            errEl.textContent = data.error || 'エラーが発生しました';
+        }
+    }
+
+    document.getElementById('new-project-name').addEventListener('keydown', e => {
+        if (e.key === 'Enter') addProject();
+    });
+
+    const tabNames = ['daily', 'monthly', 'summary', 'records'];
+    function switchTab(name) {
+        document.querySelectorAll('.tab').forEach((t, i) => {
+            t.classList.toggle('active', tabNames[i] === name);
+        });
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.getElementById('tab-' + name).classList.add('active');
+    }
+
+    refresh();
+</script>
+</body>
+</html>
