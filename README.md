@@ -18,3 +18,7 @@ docker compose up -d
 ```
 
 ブラウザで http://localhost:5000 を開く。
+
+## スクリーンショット
+
+![ホーム画面](home_page.png)
